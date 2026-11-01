@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Chùa Online V1</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#2a0d0a;font-family:system-ui,sans-serif;color:#fff;touch-action:none}
+canvas{display:block;position:fixed;inset:0}
+#menu{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(40,10,6,.72);padding:20px;text-align:center}
+#menu h1{margin:0 0 6px;color:#f5c542;font-size:28px}
+#nm{width:240px;padding:12px;font-size:18px;border-radius:10px;border:2px solid #f5c542;background:#fff8e7;color:#3a1a0a;text-align:center;-webkit-user-select:text;user-select:text}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.sw{width:38px;height:38px;border-radius:50%;border:3px solid transparent}
+.sw.on{border-color:#fff}
+.hb{padding:8px 14px;border-radius:18px;background:#5a1d12;border:2px solid transparent;color:#fff;font-size:15px}
+.hb.on{border-color:#f5c542;background:#8e2a1c}
+#play{margin-top:8px;padding:14px 56px;font-size:22px;font-weight:700;border:0;border-radius:14px;background:#f5c542;color:#4a1a08}
+#play:disabled{opacity:.4}
+#status{position:fixed;top:max(8px,env(safe-area-inset-top));left:8px;z-index:20;padding:6px 10px;border-radius:8px;font-size:13px;background:rgba(0,0,0,.65);max-width:60vw}
+#plist{position:fixed;top:max(8px,env(safe-area-inset-top));right:8px;z-index:20;padding:6px 10px;border-radius:8px;font-size:12px;background:rgba(0,0,0,.55);text-align:right;max-width:38vw}
+#hud{display:none}
+#joy{position:fixed;left:24px;bottom:calc(28px + env(safe-area-inset-bottom));width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);z-index:15;touch-action:none}
+#knob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(245,197,66,.85)}
+#btns{position:fixed;right:16px;bottom:calc(28px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 1fr;gap:10px;z-index:15}
+#btns button{width:84px;height:62px;border-radius:14px;border:2px solid #f5c542;background:rgba(110,30,18,.85);color:#fff;font-weight:700;font-size:14px;touch-action:none}
+#btns button:active{background:#c0392b}
+</style></head><body>
+<div id="status">Đang khởi tạo…</div>
+<div id="plist"></div>
+<div id="menu">
+ <h1>🪷 Chùa Online</h1>
+ <input id="nm" maxlength="12" placeholder="Tên nhân vật" autocomplete="off">
+ <div>Màu áo</div><div id="cols" class="row"></div>
+ <div>Kiểu tóc</div><div id="hairs" class="row"></div>
+ <button id="play" disabled>PLAY</button>
+</div>
+<div id="hud">
+ <div id="joy"><div id="knob"></div></div>
+ <div id="btns"><button id="bBow">LẠY</button><button id="bKneel">QUỲ</button><button id="bClasp">CHẮP TAY</button><button id="bIdle">THẢ LỎNG</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getDatabase,ref,set,onValue,onDisconnect,remove} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+/* ====== DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY ====== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5RkFjTjJWlTWOyOVRmwRvNXpbEbXnsUE",
+  authDomain: "online-temple-6e560.firebaseapp.com",
+  databaseURL: "https://online-temple-6e560-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "online-temple-6e560",
+  appId: "1:834346756622:web:b2406cf73538746709ea5f"
+};
+/* ================================================== */
+const ROOM = "chua1";
+const $ = id => document.getElementById(id);
+const stEl = $("status");
+function status(t, bad){ stEl.textContent = t; stEl.style.background = bad ? "rgba(170,20,20,.9)" : "rgba(0,0,0,.65)"; }
+
+/* ---------- Three.js ---------- */
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a0d0a);
+scene.fog = new THREE.Fog(0x2a0d0a, 28, 60);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .1, 100);
+addEventListener("resize", () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+scene.add(new THREE.HemisphereLight(0xffe2b0, 0x5a2a18, .95));
+const dl = new THREE.DirectionalLight(0xffd9a0, .55); dl.position.set(5,12,8); scene.add(dl);
+const pl = new THREE.PointLight(0xffc060, 1.3, 20); pl.position.set(0,4,-9); scene.add(pl);
+
+const M = (c,o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.7},o));
+const box = (w,h,d,x,y,z,m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); b.position.set(x,y,z); scene.add(b); return b; };
+const RED = M(0x8e2a1c), WOOD = M(0x6b3a1e), GOLD = M(0xd9a520,{metalness:.7,roughness:.35,emissive:0x4a3000});
+
+/* Sàn */
+const fc = document.createElement("canvas"); fc.width = fc.height = 128;
+const fx = fc.getContext("2d"); fx.fillStyle = "#c27a3a"; fx.fillRect(0,0,128,128); fx.strokeStyle = "#8a4e22"; fx.lineWidth = 4; fx.strokeRect(0,0,128,128);
+const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.repeat.set(10,10);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({map:ft,roughness:.6}));
+floor.rotation.x = -Math.PI/2; scene.add(floor);
+/* Tường + trần */
+[[0,3.5,-15.25,30.5,7,.5],[0,3.5,15.25,30.5,7,.5],[-15.25,3.5,0,.5,7,30.5],[15.25,3.5,0,.5,7,30.5]].forEach(w => {
+  box(w[3],w[4],w[5],w[0],w[1],w[2],RED);
+  box(w[3]+.02,.3,w[5]+.02,w[0],6.4,w[2],GOLD);
+});
+box(31,.4,31,0,7.2,0,M(0x4a120c));
+/* Cột + đèn lồng */
+const lan = M(0xff9a3a,{emissive:0xff6a00,emissiveIntensity:.9});
+[-8,8].forEach(x => [-5,2,9].forEach(z => {
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(.5,.55,7,14), M(0x9b1c14)); p.position.set(x,3.5,z); scene.add(p);
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,.4,14), GOLD); b.position.set(x,.2,z); scene.add(b);
+  const l = new THREE.Mesh(new THREE.SphereGeometry(.4,12,10), lan); l.scale.y = 1.3; l.position.set(x*.55,5.4,z); scene.add(l);
+  box(.03,1.4,.03,x*.55,6.5,z,GOLD);
+}));
+/* Đài cao + bậc thang */
+box(30,.5,6.5,0,.25,-11.75,WOOD); box(30,.08,6.5,0,.52,-11.75,GOLD).scale.set(1,.5,1);
+box(7,.17,.9,0,.085,-8.05,WOOD); box(7,.34,.7,0,.17,-8.3,WOOD);
+/* Bàn thờ */
+box(3.2,.9,1.1,0,.95,-10,RED); box(3.4,.1,1.3,0,1.45,-10,GOLD);
+[-1,1].forEach(s => {
+  const c = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.5,8), M(0xfff2d0)); c.position.set(s*1.2,1.75,-10); scene.add(c);
+  const f = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), M(0xffaa00,{emissive:0xff8800})); f.position.set(s*1.2,2.05,-10); scene.add(f);
+  const v = new THREE.Mesh(new THREE.CylinderGeometry(.25,.2,.7,10), M(0x4a6fb0)); v.position.set(s*2.4,.85,-10.3); scene.add(v);
+  [0xff7aa8,0xffe27a,0xffffff].forEach((c2,i) => { const fl = new THREE.Mesh(new THREE.SphereGeometry(.16,8,6), M(c2)); fl.position.set(s*2.4+(i-1)*.18,1.35+i%2*.12,-10.3); scene.add(fl); });
+});
+[0xff7a1a,0xe8451a,0x9ccc3a].forEach((c,i) => { const o = new THREE.Mesh(new THREE.SphereGeometry(.15,8,6), M(c)); o.position.set(-.4+i*.4,1.6,-9.8); scene.add(o); });
+/* Tượng Phật tượng trưng bằng khối vàng (sẽ thay sau) */
+const st = new THREE.Group(); st.position.set(0,.5,-12.8); scene.add(st);
+const add = (g,x,y,z,sx=1,sy=1,sz=1) => { const m = new THREE.Mesh(g,GOLD); m.position.set(x,y,z); m.scale.set(sx,sy,sz); st.add(m); return m; };
+add(new THREE.CylinderGeometry(1.7,2,.5,24),0,.25,0);
+for(let i=0;i<14;i++){ const a=i/14*6.283; add(new THREE.ConeGeometry(.4,.9,8),Math.sin(a)*1.7,.8,Math.cos(a)*1.7).rotation.set(Math.cos(a)*.5,0,-Math.sin(a)*.5); }
+add(new THREE.SphereGeometry(1,16,12),0,1,.1,1.7,.45,1.2);
+add(new THREE.CylinderGeometry(.55,.95,1.5,16),0,1.95,0);
+add(new THREE.SphereGeometry(.7,14,10),0,2.6,0,1.3,.6,.8);
+[-1,1].forEach(s => add(new THREE.SphereGeometry(.35,10,8),s*.85,2,.25,.7,1.6,.8));
+add(new THREE.SphereGeometry(.3,10,8),0,1.55,.8,1.2,.5,.8);
+add(new THREE.SphereGeometry(.45,18,14),0,3.35,.05);
+add(new THREE.SphereGeometry(.22,10,8),0,3.85,.05);
+add(new THREE.TorusGeometry(1.15,.06,8,40),0,3.4,-.5);
+add(new THREE.TorusGeometry(1.5,.04,8,40),0,3.4,-.5);
+const disc = new THREE.Mesh(new THREE.CircleGeometry(1.15,40), new THREE.MeshBasicMaterial({color:0xffd060,transparent:true,opacity:.35,side:THREE.DoubleSide}));
+disc.position.set(0,3.4,-.52); st.add(disc);
+
+/* Địa hình & va chạm */
+function groundY(x,z){ return (z < -7.6 && Math.abs(x) < 3.5) ? Math.min(.5,.5*(-7.6-z)/1.1) : 0; }
+function collide(p){
+  p.x = Math.max(-14.3,Math.min(14.3,p.x)); p.z = Math.max(-14.3,Math.min(14.3,p.z));
+  if(Math.abs(p.x) >= 3.5 && p.z < -8.4) p.z = -8.4;
+  const dx = p.x, dz = p.z+12.8, d = Math.hypot(dx,dz);
+  if(d < 1.9){ const k = 1.9/(d||.01); p.x = dx*k; p.z = -12.8+dz*k; }
+  if(Math.abs(p.x) < 1.9 && p.z > -10.8 && p.z < -9.2) p.z = p.z > -10 ? -9.2 : -10.8;
+}
+
+/* ---------- Nhân vật chibi ---------- */
+const SKIN = M(0xffdcb8), HAIRM = M(0x2b1a12), DARK = M(0x151010), PINK = M(0xff9a9a);
+function label(text){
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64; const x = c.getContext("2d");
+  x.font = "bold 34px sans-serif"; x.textAlign = "center"; x.lineWidth = 6; x.strokeStyle = "#000"; x.fillStyle = "#fff";
+  x.strokeText(text,128,44); x.fillText(text,128,44);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+  s.scale.set(1.8,.45,1); s.position.y = 1.55; return s;
+}
+function makeChar(color, hair, name){
+  const root = new THREE.Group(), body = new THREE.Group(), up = new THREE.Group(); root.add(body); body.add(up); up.position.y = .32;
+  const shirt = M(color), legs = [], arms = [];
+  [1,-1].forEach(s => {
+    const p = new THREE.Group(); p.position.set(s*.12,.32,0);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.3,8), M(0x6b4a2f)); m.position.y = -.15; p.add(m);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(.1,8,6), DARK); f.position.set(0,-.29,.03); f.scale.set(1,.6,1.3); p.add(f);
+    body.add(p); legs.push(p);
+    const a = new THREE.Group(); a.position.set(s*.25,.35,0);
+    const am = new THREE.Mesh(new THREE.CylinderGeometry(.06,.07,.26,8), shirt); am.position.y = -.12; a.add(am);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), SKIN); h.position.y = -.27; a.add(h);
+    up.add(a); arms.push(a);
+  });
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.19,.24,.42,12), shirt); torso.position.y = .2; up.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.36,16,12), SKIN); head.position.y = .72; up.add(head);
+  [-1,1].forEach(s => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(.05,8,6), DARK); e.position.set(s*.13,.74,.32); e.scale.set(1,1.4,.5); up.add(e);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(.06,8,6), PINK); b.position.set(s*.22,.65,.28); b.scale.set(1,.6,.4); up.add(b);
+  });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(.385,14,10,0,Math.PI*2,0,Math.PI*(hair===1?.62:.52)), HAIRM);
+  cap.position.y = .74; cap.rotation.x = -.3; up.add(cap);
+  if(hair===0){ const bun = new THREE.Mesh(new THREE.SphereGeometry(.15,10,8), HAIRM); bun.position.set(0,1.12,-.05); up.add(bun); }
+  if(hair===2){ const lg = new THREE.Mesh(new THREE.SphereGeometry(.34,12,10), HAIRM); lg.position.set(0,.5,-.16); lg.scale.set(1,1.4,.7); up.add(lg); }
+  const lb = label(name); root.add(lb);
+  scene.add(root);
+  return {g:root,body,up,legs,arms,lb,state:"idle",t0:performance.now(),cur:{ax:0,az:.12,ux:0,by:0,lx:0},ph:0,sw:0};
+}
+const POSE = {
+  idle:{ax:0,az:.12,ux:0,by:0,lx:0},
+  clasp:{ax:-1.15,az:.75,ux:0,by:0,lx:0},
+  kneel:{ax:-.5,az:.1,ux:0,by:-.22,lx:1.45},
+  bow:{ax:-1.1,az:.75,ux:0,by:-.22,lx:1.45}
+};
+function setState(c,s){ if(c.state!==s){ c.state = s; c.t0 = performance.now(); } }
+function animChar(c, dt, walking){
+  const T = POSE[c.state] || POSE.idle, k = 1-Math.exp(-12*dt), u = c.cur;
+  let ux = T.ux; if(c.state==="bow") ux = Math.sin(Math.PI*Math.min(1,(performance.now()-c.t0)/3000))*1.2;
+  u.ax+=(T.ax-u.ax)*k; u.az+=(T.az-u.az)*k; u.by+=(T.by-u.by)*k; u.lx+=(T.lx-u.lx)*k; u.ux+=(ux-u.ux)*k;
+  const w = walking && (c.state==="idle"||c.state==="clasp") ? 1 : 0;
+  c.sw += (w-c.sw)*k; c.ph += dt*10*c.sw;
+  const s = Math.sin(c.ph)*c.sw, as = c.state==="idle" ? s*.6 : 0;
+  c.legs[0].rotation.x = u.lx + s*.7; c.legs[1].rotation.x = u.lx - s*.7;
+  c.arms[0].rotation.x = u.ax + as; c.arms[1].rotation.x = u.ax - as;
+  c.arms[0].rotation.z = -u.az; c.arms[1].rotation.z = u.az;
+  c.up.rotation.x = u.ux; c.body.position.y = u.by + Math.abs(s)*.04;
+}
+const lerpAng = (a,b,t) => { const d = ((b-a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; return a+d*t; };
+
+/* ---------- Menu ---------- */
+const COLS = [0xe8b923,0xc0392b,0x2e86c1,0x27ae60,0x8e44ad,0xf5f0e1], HN = ["Búi","Ngắn","Dài"];
+let selCol = 0, selHair = 0;
+COLS.forEach((c,i) => { const d = document.createElement("div"); d.className = "sw"+(i?"":" on"); d.style.background = "#"+c.toString(16).padStart(6,"0");
+  d.onclick = () => { selCol = i; [...$("cols").children].forEach((e,j) => e.classList.toggle("on",i===j)); }; $("cols").appendChild(d); });
+HN.forEach((n,i) => { const b = document.createElement("button"); b.className = "hb"+(i?"":" on"); b.textContent = n;
+  b.onclick = () => { selHair = i; [...$("hairs").children].forEach((e,j) => e.classList.toggle("on",i===j)); }; $("hairs").appendChild(b); });
+
+/* ---------- Firebase ---------- */
+let db, connected = false, joined = false, everConnected = false, meRef = null;
+const myId = Math.random().toString(36).slice(2,10);
+const remotes = new Map();
+let me = null, myName = "", cfgOk = !Object.values(FIREBASE_CONFIG).includes("DIEN_VAO");
+if(!cfgOk){ status("⚠ Chưa dán cấu hình Firebase vào index.html", true); }
+else {
+  try {
+    db = getDatabase(initializeApp(FIREBASE_CONFIG));
+    status("Đang kết nối máy chủ…");
+    setTimeout(() => { if(!connected) status("⚠ Không kết nối được. Kiểm tra mạng và databaseURL.", true); }, 10000);
+    onValue(ref(db,".info/connected"), s => {
+      connected = s.val() === true;
+      if(connected){ everConnected = true; $("play").disabled = joined; status("🟢 Đã kết nối"); if(joined) register(); }
+      else { $("play").disabled = true; if(everConnected) status("🔴 Mất kết nối, đang thử lại…", true); }
+    });
+    onValue(ref(db,`rooms/${ROOM}/players`), snap => onPlayers(snap.val() || {}), err => status("⚠ Lỗi đọc dữ liệu: "+err.message, true));
+  } catch(e){ status("⚠ Lỗi Firebase: "+e.message, true); }
+}
+async function register(){
+  try { await onDisconnect(meRef).remove(); await sendNow(true); }
+  catch(e){ status("⚠ Lỗi ghi dữ liệu: "+e.message+" (kiểm tra Rules)", true); }
+}
+let lastSig = "", lastSend = 0;
+function payload(){ const p = me.g.position;
+  return {n:myName,c:selCol,h:selHair,x:+p.x.toFixed(2),y:+p.y.toFixed(2),z:+p.z.toFixed(2),r:+me.g.rotation.y.toFixed(2),a:me.state}; }
+async function sendNow(force){
+  if(!joined || !connected) return;
+  const d = payload(), sig = JSON.stringify(d), now = Date.now();
+  if(!force && sig === lastSig && now-lastSend < 2000) return;
+  lastSig = sig; lastSend = now; d.t = now;
+  try { await set(meRef, d); } catch(e){ status("⚠ Lỗi gửi dữ liệu: "+e.message, true); }
+}
+setInterval(() => sendNow(false), 100);
+addEventListener("pagehide", () => { if(meRef) remove(meRef); });
+
+function onPlayers(all){
+  for(const id of [...remotes.keys()]) if(!(id in all)){ scene.remove(remotes.get(id).g); remotes.delete(id); }
+  const now = performance.now();
+  for(const id in all){
+    if(id === myId) continue;
+    const p = all[id]; let r = remotes.get(id);
+    if(!r){ r = makeChar(COLS[p.c] ?? COLS[0], p.h|0, p.n || "?"); r.g.position.set(p.x,p.y,p.z); r.lastT = null; r.seen = now; remotes.set(id,r); }
+    r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tr = p.r; setState(r, p.a || "idle");
+    if(p.t !== r.lastT){ r.lastT = p.t; r.seen = now; }
+    r.name = p.n;
+  }
+}
+function updList(){
+  const live = [...remotes.values()].filter(r => r.g.visible).map(r => r.name);
+  $("plist").innerHTML = joined ? `Trong chùa: ${live.length+1}<br>${[myName+" (bạn)",...live].join("<br>")}` : "";
+}
+setInterval(updList, 1000);
+
+/* ---------- Điều khiển ---------- */
+const keys = {}; addEventListener("keydown", e => keys[e.code] = true); addEventListener("keyup", e => keys[e.code] = false);
+let jx = 0, jy = 0, jid = null;
+const joy = $("joy"), knob = $("knob");
+function joyMove(e){ const r = joy.getBoundingClientRect(); let dx = e.clientX-(r.left+65), dy = e.clientY-(r.top+65); const l = Math.hypot(dx,dy), m = 50;
+  if(l > m){ dx *= m/l; dy *= m/l; } jx = dx/m; jy = dy/m; knob.style.transform = `translate(${dx}px,${dy}px)`; }
+joy.addEventListener("pointerdown", e => { jid = e.pointerId; joy.setPointerCapture(jid); joyMove(e); });
+joy.addEventListener("pointermove", e => { if(e.pointerId === jid) joyMove(e); });
+const joyEnd = e => { if(e.pointerId === jid){ jid = null; jx = jy = 0; knob.style.transform = ""; } };
+joy.addEventListener("pointerup", joyEnd); joy.addEventListener("pointercancel", joyEnd);
+let camYaw = 0, drag = null;
+renderer.domElement.addEventListener("pointerdown", e => { drag = {id:e.pointerId,x:e.clientX}; });
+addEventListener("pointermove", e => { if(drag && e.pointerId === drag.id){ camYaw -= (e.clientX-drag.x)*.006; drag.x = e.clientX; } });
+addEventListener("pointerup", e => { if(drag && e.pointerId === drag.id) drag = null; });
+let bowTimer = 0;
+const act = s => { if(!me) return; if(s==="bow"){ setState(me,"bow"); clearTimeout(bowTimer); bowTimer = setTimeout(() => { if(me.state==="bow") setState(me,"idle"); sendNow(true); }, 3000); }
+  else if(me.state !== "bow"){ setState(me,s); } sendNow(true); };
+$("bBow").onpointerdown = () => act("bow"); $("bKneel").onpointerdown = () => act("kneel");
+$("bClasp").onpointerdown = () => act("clasp"); $("bIdle").onpointerdown = () => act("idle");
+
+$("play").onclick = () => {
+  if(!connected) return;
+  myName = $("nm").value.trim() || ("Khách"+Math.floor(Math.random()*900+100));
+  me = makeChar(COLS[selCol], selHair, myName);
+  me.g.position.set((Math.random()-.5)*6, 0, 8); me.g.rotation.y = Math.PI; me.vy = 0;
+  meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
+  joined = true; $("menu").style.display = "none"; $("hud").style.display = "block"; $("play").disabled = true;
+  register();
+};
+
+/* ---------- Vòng lặp ---------- */
+let last = performance.now(), spd = 4;
+const camPos = new THREE.Vector3(0,5,14);
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = Math.min(.05,(now-last)/1000); last = now;
+  if(joined){
+    let ix = jx, iy = jy;
+    if(keys.KeyA||keys.ArrowLeft) ix -= 1; if(keys.KeyD||keys.ArrowRight) ix += 1;
+    if(keys.KeyW||keys.ArrowUp) iy -= 1; if(keys.KeyS||keys.ArrowDown) iy += 1;
+    const mag = Math.min(1,Math.hypot(ix,iy)); let moving = mag > .15;
+    if(moving && me.state === "bow") moving = false;
+    if(moving){
+      if(me.state === "kneel") setState(me,"idle");
+      const f = -iy, rt = ix, s = Math.sin(camYaw), c = Math.cos(camYaw);
+      const mx = -s*f + c*rt, mz = -c*f - s*rt, l = Math.hypot(mx,mz)||1;
+      const p = me.g.position; p.x += mx/l*spd*mag*dt; p.z += mz/l*spd*mag*dt; collide(p);
+      me.g.rotation.y = lerpAng(me.g.rotation.y, Math.atan2(mx,mz), 1-Math.exp(-14*dt));
+    }
+    me.g.position.y = groundY(me.g.position.x, me.g.position.z);
+    animChar(me, dt, moving);
+    const p = me.g.position, d = 5.2;
+    const tgt = new THREE.Vector3(p.x+Math.sin(camYaw)*d, p.y+3.2, p.z+Math.cos(camYaw)*d);
+    camPos.lerp(tgt, 1-Math.exp(-8*dt)); camera.position.copy(camPos);
+    camera.lookAt(p.x, p.y+.9, p.z);
+  } else {
+    const t = now/1000*.15; camera.position.set(Math.sin(t)*10, 4.5, 6+Math.cos(t)*3); camera.lookAt(0,2.2,-10);
+  }
+  for(const r of remotes.values()){
+    const g = r.g, k = 1-Math.exp(-10*dt), px = g.position.x, pz = g.position.z;
+    g.position.x += (r.tx-g.position.x)*k; g.position.y += (r.ty-g.position.y)*k; g.position.z += (r.tz-g.position.z)*k;
+    g.rotation.y = lerpAng(g.rotation.y, r.tr, k);
+    g.visible = (now - r.seen) < 12000;
+    animChar(r, dt, Math.hypot(g.position.x-px, g.position.z-pz)/Math.max(dt,.001) > .5);
+  }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+</script></body></html>

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Chùa Online V1</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#2a0d0a;font-family:system-ui,sans-serif;color:#fff;touch-action:none}
+canvas{display:block;position:fixed;inset:0}
+#menu{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(40,10,6,.72);padding:20px;text-align:center}
+#menu h1{margin:0 0 6px;color:#f5c542;font-size:28px}
+#nm{width:240px;padding:12px;font-size:18px;border-radius:10px;border:2px solid #f5c542;background:#fff8e7;color:#3a1a0a;text-align:center;-webkit-user-select:text;user-select:text}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.sw{width:38px;height:38px;border-radius:50%;border:3px solid transparent}
+.sw.on{border-color:#fff}
+.hb{padding:8px 14px;border-radius:18px;background:#5a1d12;border:2px solid transparent;color:#fff;font-size:15px}
+.hb.on{border-color:#f5c542;background:#8e2a1c}
+#play{margin-top:8px;padding:14px 56px;font-size:22px;font-weight:700;border:0;border-radius:14px;background:#f5c542;color:#4a1a08}
+#play:disabled{opacity:.4}
+#solo{padding:9px 18px;font-size:14px;border:2px solid #f5c542;border-radius:12px;background:transparent;color:#f5c542}
+#status{position:fixed;top:max(8px,env(safe-area-inset-top));left:8px;z-index:20;padding:6px 10px;border-radius:8px;font-size:13px;background:rgba(0,0,0,.65);max-width:60vw}
+#plist{position:fixed;top:max(8px,env(safe-area-inset-top));right:8px;z-index:20;padding:6px 10px;border-radius:8px;font-size:12px;background:rgba(0,0,0,.55);text-align:right;max-width:38vw}
+#hud{display:none}
+#ver{position:fixed;bottom:2px;left:50%;transform:translateX(-50%);font-size:10px;opacity:.5;z-index:5;pointer-events:none}
+#joy{position:fixed;left:24px;bottom:calc(28px + env(safe-area-inset-bottom));width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);z-index:15;touch-action:none}
+#knob{position:absolute;left:40px;top:40px;width:50px;height:50px;border-radius:50%;background:rgba(245,197,66,.85)}
+#btns{position:fixed;right:16px;bottom:calc(28px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 1fr;gap:10px;z-index:15}
+#btns button{width:84px;height:62px;border-radius:14px;border:2px solid #f5c542;background:rgba(110,30,18,.85);color:#fff;font-weight:700;font-size:14px;touch-action:none}
+#btns button:active{background:#c0392b}
+</style></head><body>
+<div id="status">Đang khởi tạo…</div>
+<div id="plist"></div>
+<div id="ver"></div>
+<div id="menu">
+ <h1>🪷 Chùa Online</h1>
+ <input id="nm" maxlength="12" placeholder="Tên nhân vật" autocomplete="off">
+ <button id="play" disabled>PLAY</button>
+ <button id="solo">CHƠI THỬ (chỉ để thử nghiệm, 1 máy, không online)</button>
+</div>
+<div id="hud">
+ <div id="joy"><div id="knob"></div></div>
+ <div id="btns"><button id="bBow">LẠY</button><button id="bKneel">QUỲ</button><button id="bClasp">CHẮP TAY</button><button id="bIdle">THẢ LỎNG</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="hoa_thuong.js"></script><!-- dữ liệu nhân vật hòa thượng, để cạnh index.html -->
+<script type="module">
+let initializeApp, getDatabase, ref, set, onValue, onDisconnect, remove; // nạp động trong initFirebase()
+
+/*
+=====================================================================
+HỒ SƠ DỰ ÁN "CHÙA ONLINE" (mọi AI phải đọc hết khối này trước khi sửa)
+=====================================================================
+MỤC TIÊU: game đi chùa 3D chạy trên Chrome Android, nhiều người chơi thấy nhau
+trong cùng một chùa. Chủ dự án KHÔNG biết lập trình: luôn giao file index.html
+hoàn chỉnh + hướng dẫn từng bước bằng tiếng Việt đơn giản.
+Dự án được nhiều AI làm luân phiên (AI 1 đến AI 6). File này là "bộ nhớ" chung.
+
+QUY TẮC CHUNG CHO MỌI AI
+1. Đọc hồ sơ này, rồi tóm tắt 3-5 dòng cho chủ dự án trước khi sửa.
+2. Mỗi lần giao file: tăng BUILD_VERSION bên dưới và THÊM 1 mục vào NHẬT KÝ
+   (mới nhất ở trên cùng). Không xóa hay sửa mục nhật ký của AI trước.
+3. Mục nhật ký gồm: phiên bản, AI số mấy, đã đổi gì, vì sao, đụng vào khu nào
+   của code, ĐÃ KIỂM THỬ gì / CHƯA kiểm thử gì (trung thực, không đoán).
+4. Code mới phải có chú thích tiếng Việt giải thích "để làm gì / vì sao".
+   Chia code theo các khu, mỗi khu có dòng tiêu đề dạng: ---------- TÊN KHU ----------
+5. Không đổi HỢP ĐỒNG MẠNG (bên dưới). Nếu bắt buộc đổi: cập nhật mục đó, ghi
+   vào nhật ký, và đưa chủ dự án luật Firebase mới kèm hướng dẫn dán từng bước.
+6. Giữ nguyên khối FIREBASE_CONFIG. Không bao giờ để chữ DIEN_VAO.
+7. Không tuyên bố "multiplayer đã chạy" nếu chưa được chủ dự án thử 2 máy thật.
+8. Tên người chơi là dữ liệu không tin cậy: chỉ hiển thị bằng textContent/canvas,
+   KHÔNG dùng innerHTML.
+9. Cập nhật mục "VIỆC DỞ / LỖI ĐÃ BIẾT" khi phát hiện hoặc xử lý xong.
+10. Khi chủ dự án bảo "viết bàn giao": ghi lại phiên bản hiện tại, việc đã làm,
+    việc dở, lưu ý, và nhắc chủ dự án đính kèm đúng file index.html mới nhất.
+
+11. TÊN FILE: mỗi lần giao file, đặt tên theo mẫu  onl temp - <việc đã sửa>.html  (ví dụ: onl temp - mắt.html,
+    onl temp - mái chùa.html). Chủ dự án đã yêu cầu quy ước này. Nhiều việc thì nối bằng dấu phẩy. Khi đưa lên
+    GitHub phải đổi tên lại thành index.html. Bản bàn giao đặt tên: onl temp - <việc> - bàn giao.txt
+
+PHONG THỦY (quy ước chủ dự án, mọi AI phải giữ): ưu tiên SỐ LẺ. Hiện có: 9 bậc thang mỗi cổng,
+3 cổng, cổng lớn rộng 3 ô, bậc trước rộng 5 ô, bậc bên rộng 3 ô. Cổng chính nằm đúng trục giữa
+cổng - bàn thờ - tượng. "Phía trước" = hướng mặt tượng Phật quay ra (+z); tượng ở phía sau (-z).
+Thêm vật thể (cây, đèn, cột, bậc...) thì ưu tiên số lượng lẻ.
+
+KIẾN TRÚC
+- ĐƠN VỊ ĐO CHUNG: "Ô CƠ SỞ" = một ô gạch sàn = 2 đơn vị trong code (ft.repeat = 15).
+  Chủ dự án sẽ nói kích thước theo ô cơ sở (ví dụ "cây cao 3,5 ô" = 7 đơn vị).
+  AI phải tự đổi: đơn vị code = ô cơ sở x 2. Nếu đổi kích thước ô gạch sàn thì phải
+  hỏi chủ dự án và cập nhật dòng này. Kích thước hiện tại: phòng 15x15 ô; tường và cột
+  cao 3,5 ô; đài cao 0,25 ô, sâu 3,25 ô; nhân vật cao khoảng 0,7 ô; tượng khối vàng cao
+  khoảng 2,2 ô; tốc độ đi 2 ô/giây.
+- Một file index.html. Three.js r128 (cdnjs, KHÔNG có CapsuleGeometry).
+  Firebase Realtime Database SDK 10.12.2 (gstatic, module). Host: GitHub Pages.
+- Các khu trong code: Three.js (cảnh, đèn, sàn, tường, cột, đài, bàn thờ, tượng),
+  Địa hình và va chạm (groundY, collide), Nhân vật chibi (makeChar, POSE, animChar),
+  Menu, Firebase (kết nối, register, sendNow, onPlayers, updList), Điều khiển
+  (joystick, kéo xoay camera, nút hành động), Vòng lặp (loop).
+- Tượng Phật hiện là khối vàng tượng trưng (placeholder) trong nhóm biến "st".
+  Chủ dự án sẽ thay bằng tranh thờ hoặc model .glb sau cùng.
+
+HỢP ĐỒNG MẠNG (KHÔNG ĐỔI KHI CHƯA BÁO CHỦ DỰ ÁN)
+- Phòng: rooms/chua1/players/{id}
+- Trường mỗi người chơi: n (tên, tối đa 12 ký tự), c (chỉ số màu 0-5),
+  h (kiểu tóc 0-2), x, y, z, r (hướng quay), a (trạng thái, tối đa 8 ký tự),
+  t (thời điểm gửi). Mọi trường khác bị luật Firebase TỪ CHỐI.
+- Trạng thái a: idle, clasp, kneel, bow. Đi bộ không gửi, máy nhận tự suy ra.
+- Luật Firebase hiện tại (đã Publish, không hết hạn):
+  rooms/$room/players: .read true; $pid: .write true; .validate yêu cầu có
+  n,x,y,z,r,a; n là chuỗi <=12; a là chuỗi <=8; x,y,z,r,c,h,t là số;
+  $other (trường lạ) bị cấm.
+
+VIỆC DỞ / LỖI ĐÃ BIẾT
+- (v1.0.9) Hòa thượng ~70 nghìn tam giác/người, ảnh màu bị vỡ thành hàng nghìn mảnh nhỏ nên không giảm mặt tự động được. Cách tốt nhất: tạo lại model trên
+  hyper3d từ ảnh MỘT góc nhìn chính diện với số mặt thấp. Model chưa có xương: chưa có chắp tay thật, bước chân. Menu tạm bỏ chọn màu/tóc/phụ kiện (code ACCS, makeMala còn đó nhưng không dùng).
+- Tượng Phật còn là khối vàng placeholder (làm sau cùng).
+- Phụ kiện (v1.0.8) mới chỉ hiển thị ở máy người đeo. Để đồng bộ online cần thêm trường m vào payload() và vào luật Firebase (báo chủ dự án trước).
+- Ngoại thất chính điện còn là hộp phẳng: chưa có mái ngói, cánh cửa, hoành phi có chữ, sân chưa trang trí.
+- Đồ họa nhân vật và chùa còn thô, cần thiết kế lại. Mặt đã làm xong (v1.0.7). Thân/áo/tóc/tay chân còn thô. Chủ dự án
+  CẤM dùng khối hình học (trụ, cầu, nón) ghép lộ liễu làm nhân vật hay vật thể; đã bác 2 thử nghiệm (áo nón + tóc mũ;
+  nặn liền khối SDF ra hình "chim cánh cụt"). Hãy xin ảnh tham khảo và làm từng bộ phận nhỏ cho chủ dự án duyệt.
+- Lỗi nhỏ chưa sửa: dòng me.g.rotation.y = Math.PI trong startGame nằm trong chú thích nên không chạy.
+- CHẾ ĐỘ LÀM VIỆC: chủ dự án sửa OFFLINE đến khi ưng ý mới cập nhật Firebase và GitHub một lần. Bản này KHÔNG đổi mạng.
+- Luật Firebase chưa có đăng nhập, người cố tình phá vẫn có thể ghi rác hợp lệ.
+- Chưa đo hiệu năng trên nhiều máy Android.
+
+NHẬT KÝ THAY ĐỔI (mới nhất ở trên)
+- v1.0.9 | AI 7 | THAY NHÂN VẬT bằng HÒA THƯỢNG (model GLB do chủ dự án tạo từ ảnh 2D trên hyper3d; chỉ giữ 1 hòa thượng chính diện, hai bản
+  nhìn nghiêng/sau trong file gốc đã bị loại hẳn). Model nằm trong file riêng hoa_thuong.js (GLB mã hóa base64, ~4 MB, đặt cạnh index.html) để
+  hồ sơ này không phình to; hoa_thuong.glb là cùng dữ liệu dạng GLB chuẩn. Khu mới "HÒA THƯỢNG" (MONK, loadMonk, makeMonk) trước makeChar; trình đọc GLB
+  tự viết (không cần GLTFLoader vì r128 trên cdnjs không có). Model liền khối KHÔNG có xương => cắt đôi ở độ cao MONK.PIV (eo): LẠY/QUỲ ép thấp nửa dưới và cúi nửa trên;
+  đi bộ lắc nhẹ; CHẮP TAY và THẢ LỎNG chưa khác nhau. MENU: bỏ hàng Màu áo, Kiểu tóc, Phụ kiện (tạm thời, theo yêu cầu chủ dự án); giữ ô tên, PLAY và nút
+  CHƠI THỬ (chỉ để chủ dự án thử nghiệm, 1 máy, không online). Mạng KHÔNG đổi: vẫn gửi c=0, h=0; máy nhận bỏ qua c/h và vẽ hòa thượng.
+  Nếu hoa_thuong.js thiếu/lỗi: hiện cảnh báo đỏ và tự dùng nhân vật cũ (khối hình). Khu đụng vào: menu (HTML+JS), makeChar, animChar, onPlayers, startGame.
+  Đã kiểm thử: cú pháp JS; chạy thử bộ đọc GLB và cắt đôi với dữ liệu thật trong Node (số đỉnh/tam giác). CHƯA kiểm thử: hình dáng thật trong game trên điện thoại,
+  độ khớp ở eo khi lạy, FPS (mỗi hòa thượng ~70 nghìn tam giác vẽ ra, gồm dải chồng ở eo, nặng hơn nhân vật cũ nhiều; nhiều người cùng lúc có thể giật), ảnh màu có bị lốm đốm khi nhìn xa không.
+- v1.0.8 | AI 3 | Thêm PHỤ KIỆN CÓ THỂ CHỌN ở menu (hàng "Phụ kiện": Không / Tràng hạt). Phụ kiện đầu tiên: TRÀNG HẠT GỖ nâu đậm
+  vân nâu nhạt (27 hạt, số lẻ theo phong thủy; hạt chủ + tua nhỏ ở giữa ngực), đeo quanh cổ rủ xuống ngực. Gắn vào nhóm "up" nên
+  khi LẠY/CÚI tràng hạt cúi theo. Vân gỗ vẽ bằng canvas (hàm woodTex), hình học và vị trí hạt tính MỘT LẦN rồi dùng chung
+  (malaParts), mỗi nhân vật chỉ tốn 1 InstancedMesh cho cả chuỗi hạt để nhẹ máy. Các hạt cách đều theo chiều dài cung và luôn
+  chừa khoảng hở GAP nên không đụng nhau. makeChar có thêm tham số thứ 4 "acc" (0 = không, 1 = tràng hạt). Khu đụng vào: menu
+  (HTML + JS), makeChar, startGame, khu mới "PHỤ KIỆN".
+  KHÔNG đổi mạng, KHÔNG đổi luật Firebase => HIỆN CHỈ MÁY CỦA MÌNH THẤY tràng hạt của mình; người khác thấy mình chưa đeo.
+  Muốn người khác thấy: thêm trường m (số 0-1) vào payload + luật Firebase (cần chủ dự án duyệt, xem mục VIỆC DỞ).
+  Đã kiểm thử: cú pháp JS; tính toán khoảng hở giữa các hạt (nhỏ nhất > 0). CHƯA kiểm thử: hình dáng thật trên điện thoại (vị trí
+  tràng hạt so với tay/áo ở tư thế CHẮP TAY và LẠY), FPS khi đông người, menu có đủ chỗ trên màn hình ngang nhỏ.
+- v1.0.7 | AI 2 | Thay hai chấm mắt và hai quả cầu má hồng bằng KHUÔN MẶT VẼ CANVAS (mắt có lòng trắng, mống mắt chuyển
+  sắc, đồng tử, điểm sáng, mi, lông mày, mũi, miệng, má hồng), dán lên đầu bằng UV chiếu thẳng (hàm drawFace, headGeo, HEADM).
+  Có sẵn 4 biểu cảm nhưng game dùng ex=0. Tóc "Ngắn": độ phủ .62 -> .56 để không che mắt. Thêm quy tắc 11 đặt tên file.
+  KHÔNG đổi mạng, KHÔNG đổi luật Firebase. (Số v1.0.7 này thay cho bản v1.0.7 thử nghiệm đã bị bỏ.)
+  Đã kiểm thử: cú pháp JS, kiểm tra tọa độ UV của mắt bằng tính toán. CHƯA kiểm thử: hình dáng thật trên điện thoại, FPS khi có nhiều người,
+  hai máy thấy nhau.
+- v1.0.6 | AI 1 | Thêm KHÔNG GIAN ĐÌNH VIỆN: chính điện nay nằm trên nền cao 1,35 ô (nhóm "temple" nâng
+  lên H); 3 cổng (trước lớn 3x2,5 ô; trái/phải nhỏ hơn 0,5 ô: 2,5x2 ô); mỗi cổng 9 bậc thang (trước
+  rộng 5 ô, hai bên rộng 3 ô); sân đá trống bao quanh, tường rào thấp; người chơi xuất hiện ở sân
+  trước. Viết lại groundY/collide thành groundY + blocked + collide(p,pv) cho cả sân, bậc, cổng.
+  Giả định cần chủ dự án xác nhận: "nhỏ hơn 0.5 đơn vị" hiểu là 0.5 ô cơ sở, áp dụng cho cả rộng
+  lẫn cao. Chưa có mái ngoài, cánh cửa, hoa văn. Không đổi mạng (y vẫn gửi như cũ).
+  Đã kiểm thử: cú pháp JS. Chưa kiểm thử leo bậc/va chạm trên máy thật.
+- v1.0.5 | AI 1 | Chốt đơn vị "ô cơ sở" (1 ô = 2 đơn vị code) làm chuẩn đo chung, ghi vào mục
+  KIẾN TRÚC. Không đổi gameplay hay hình ảnh.
+- v1.0.4 | AI 1 | Ô gạch sàn chỉnh thành đúng 2 đơn vị (ft.repeat = 15), thay cho 2.1 của
+  v1.0.3. Sàn 30 chia đúng 15 ô nên khít tường, không còn ô bị cắt. Chưa xem trên máy thật.
+- v1.0.3 | AI 1 | Ô gạch sàn nhỏ hơn 30% (cạnh ô từ 3 xuống 2.1 đơn vị) bằng cách đổi
+  ft.repeat từ 10 thành 30/2.1 trong khu Sàn. Chỉ đổi hiển thị, không đụng mạng.
+  Đã kiểm thử: chưa xem trên máy thật.
+- v1.0.2 | AI 1 | Thêm nút "XEM THỬ ĐỒ HỌA" (solo=true): vào chùa 1 máy, KHÔNG dùng
+  Firebase, để chủ dự án xem và duyệt đồ họa. Firebase giờ nạp bằng import() động nên
+  trang vẫn chạy khi không tải được Firebase. Chế độ này chỉ để xem đồ họa, KHÔNG phải
+  multiplayer giả; không dùng nó để tuyên bố multiplayer chạy. Đường PLAY online giữ
+  nguyên logic. Đã kiểm thử: cú pháp JS. Chưa thử lại 2 máy thật sau thay đổi này.
+- v1.0.1 | AI 1 | Vá lỗ hổng: bảng "Trong chùa" dùng innerHTML với tên người
+  chơi -> đổi sang textContent, cắt tên 12 ký tự (hàm cleanName). Thêm hồ sơ này
+  và nhãn phiên bản. Đã kiểm thử: cú pháp JS. Chưa kiểm thử lại trên 2 máy thật.
+- v1.0.0 | AI 1 | Bản đầu: chùa khối cơ bản, nhân vật chibi, 4 động tác, joystick,
+  multiplayer Firebase. Đã được chủ dự án thử 2 điện thoại: thấy nhau và chạy.
+=====================================================================
+*/
+const BUILD_VERSION = "v1.0.9";
+document.getElementById("ver").textContent = BUILD_VERSION;
+
+/* ====== DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY ====== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5RkFjTjJWlTWOyOVRmwRvNXpbEbXnsUE",
+  authDomain: "online-temple-6e560.firebaseapp.com",
+  databaseURL: "https://online-temple-6e560-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "online-temple-6e560",
+  appId: "1:834346756622:web:b2406cf73538746709ea5f"
+};
+/* ================================================== */
+const ROOM = "chua1";
+const $ = id => document.getElementById(id);
+const stEl = $("status");
+function status(t, bad){ stEl.textContent = t; stEl.style.background = bad ? "rgba(170,20,20,.9)" : "rgba(0,0,0,.65)"; }
+
+/* ---------- Three.js ---------- */
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+/* ---------- Hằng số kích thước (1 ô cơ sở = 2 đơn vị code) ---------- */
+const NSTEP = 9, RISE = 0.3, RUN = 0.8, H = NSTEP*RISE; // 9 bậc thang (số lẻ, phong thủy). Nền chùa cao H = 2.7 đv = 1.35 ô
+const FW = 6, FH = 5;       // cổng lớn (phía trước): rộng 3 ô, cao 2.5 ô
+const SW = FW-1, SH = FH-1; // cổng nhỏ (tường trái/phải): nhỏ hơn 0.5 ô (= 1 đv), cả rộng lẫn cao: 2.5 ô x 2 ô
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe9b27a); // trời hoàng hôn ấm cho khoảng sân ngoài
+scene.fog = new THREE.Fog(0xe9b27a, 45, 120);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .1, 100);
+addEventListener("resize", () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+scene.add(new THREE.HemisphereLight(0xffe2b0, 0x5a2a18, .95));
+const dl = new THREE.DirectionalLight(0xffd9a0, .55); dl.position.set(5,12,8); scene.add(dl);
+const pl = new THREE.PointLight(0xffc060, 1.3, 20); pl.position.set(0,4+H,-9); scene.add(pl);
+
+const temple = new THREE.Group(); temple.position.y = H; scene.add(temple); // cả chính điện nằm trên nền cao H
+const M = (c,o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.7},o));
+const box = (w,h,d,x,y,z,m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); b.position.set(x,y,z); temple.add(b); return b; };
+const RED = M(0x8e2a1c), WOOD = M(0x6b3a1e), GOLD = M(0xd9a520,{metalness:.7,roughness:.35,emissive:0x4a3000});
+
+/* Sàn */
+const fc = document.createElement("canvas"); fc.width = fc.height = 128;
+const fx = fc.getContext("2d"); fx.fillStyle = "#c27a3a"; fx.fillRect(0,0,128,128); fx.strokeStyle = "#8a4e22"; fx.lineWidth = 4; fx.strokeRect(0,0,128,128);
+const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.repeat.set(15,15); // mỗi ô gạch cạnh đúng 2 đơn vị (sàn 30 chia hết 15 ô, khít tường)
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({map:ft,roughness:.6}));
+floor.rotation.x = -Math.PI/2; temple.add(floor);
+/* Tường + cổng + trần */
+box(30.5,7,.5,0,3.5,-15.25,RED); // tường sau (không cổng)
+// wallGate: dựng tường có cổng ở giữa. side: "F" trước (+z), "L" trái (-x), "R" phải (+x). gw, gh = rộng, cao cổng
+function wallGate(side, gw, gh){
+  const L = 30.5, T = .5, WH = 7, seg = (L-gw)/2;
+  const put = (along, y, len, h, mat, t=T) => { // along = vị trí dọc theo tường
+    if(side==="F") box(len,h,t,along,y,15.25,mat); else box(t,h,len,side==="R"?15.25:-15.25,y,along,mat); };
+  put(-(gw/2+seg/2), WH/2, seg, WH, RED); put(gw/2+seg/2, WH/2, seg, WH, RED); // hai mảng tường cạnh cổng
+  put(0, gh+(WH-gh)/2, gw, WH-gh, RED);                                          // mảng tường phía trên cổng
+  put(-(gw/2+.15), gh/2, .3, gh, GOLD, T+.12); put(gw/2+.15, gh/2, .3, gh, GOLD, T+.12); // khung cổng vàng
+  put(0, gh+.15, gw+.6, .3, GOLD, T+.12);                                        // xà ngang vàng
+  put(0, .02, gw, .04, GOLD, T+.5);                                              // ngưỡng cửa
+}
+wallGate("F", FW, FH); wallGate("L", SW, SH); wallGate("R", SW, SH);
+box(3.6,1,.1,0,5.8,15.55,GOLD); box(3.3,.7,.12,0,5.8,15.6,RED); // bảng hoành phi trống phía trên cổng chính (chưa có chữ)
+[[0,-15.25,30.5,.5],[0,15.25,30.5,.5],[-15.25,0,.5,30.5],[15.25,0,.5,30.5]].forEach(w => box(w[2]+.02,.3,w[3]+.02,w[0],6.4,w[1],GOLD)); // dải vàng trên tường
+box(31,.4,31,0,7.2,0,M(0x4a120c)); // trần
+/* Cột + đèn lồng */
+const lan = M(0xff9a3a,{emissive:0xff6a00,emissiveIntensity:.9});
+[-8,8].forEach(x => [-5,2,9].forEach(z => {
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(.5,.55,7,14), M(0x9b1c14)); p.position.set(x,3.5,z); temple.add(p);
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,.4,14), GOLD); b.position.set(x,.2,z); temple.add(b);
+  const l = new THREE.Mesh(new THREE.SphereGeometry(.4,12,10), lan); l.scale.y = 1.3; l.position.set(x*.55,5.4,z); temple.add(l);
+  box(.03,1.4,.03,x*.55,6.5,z,GOLD);
+}));
+/* Đài cao + bậc thang */
+box(30,.5,6.5,0,.25,-11.75,WOOD); box(30,.08,6.5,0,.52,-11.75,GOLD).scale.set(1,.5,1);
+box(7,.17,.9,0,.085,-8.05,WOOD); box(7,.34,.7,0,.17,-8.3,WOOD);
+/* Bàn thờ */
+box(3.2,.9,1.1,0,.95,-10,RED); box(3.4,.1,1.3,0,1.45,-10,GOLD);
+[-1,1].forEach(s => {
+  const c = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.5,8), M(0xfff2d0)); c.position.set(s*1.2,1.75,-10); temple.add(c);
+  const f = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), M(0xffaa00,{emissive:0xff8800})); f.position.set(s*1.2,2.05,-10); temple.add(f);
+  const v = new THREE.Mesh(new THREE.CylinderGeometry(.25,.2,.7,10), M(0x4a6fb0)); v.position.set(s*2.4,.85,-10.3); temple.add(v);
+  [0xff7aa8,0xffe27a,0xffffff].forEach((c2,i) => { const fl = new THREE.Mesh(new THREE.SphereGeometry(.16,8,6), M(c2)); fl.position.set(s*2.4+(i-1)*.18,1.35+i%2*.12,-10.3); temple.add(fl); });
+});
+[0xff7a1a,0xe8451a,0x9ccc3a].forEach((c,i) => { const o = new THREE.Mesh(new THREE.SphereGeometry(.15,8,6), M(c)); o.position.set(-.4+i*.4,1.6,-9.8); temple.add(o); });
+/* Tượng Phật tượng trưng bằng khối vàng (sẽ thay sau) */
+const st = new THREE.Group(); st.position.set(0,.5,-12.8); temple.add(st);
+const add = (g,x,y,z,sx=1,sy=1,sz=1) => { const m = new THREE.Mesh(g,GOLD); m.position.set(x,y,z); m.scale.set(sx,sy,sz); st.add(m); return m; };
+add(new THREE.CylinderGeometry(1.7,2,.5,24),0,.25,0);
+for(let i=0;i<14;i++){ const a=i/14*6.283; add(new THREE.ConeGeometry(.4,.9,8),Math.sin(a)*1.7,.8,Math.cos(a)*1.7).rotation.set(Math.cos(a)*.5,0,-Math.sin(a)*.5); }
+add(new THREE.SphereGeometry(1,16,12),0,1,.1,1.7,.45,1.2);
+add(new THREE.CylinderGeometry(.55,.95,1.5,16),0,1.95,0);
+add(new THREE.SphereGeometry(.7,14,10),0,2.6,0,1.3,.6,.8);
+[-1,1].forEach(s => add(new THREE.SphereGeometry(.35,10,8),s*.85,2,.25,.7,1.6,.8));
+add(new THREE.SphereGeometry(.3,10,8),0,1.55,.8,1.2,.5,.8);
+add(new THREE.SphereGeometry(.45,18,14),0,3.35,.05);
+add(new THREE.SphereGeometry(.22,10,8),0,3.85,.05);
+add(new THREE.TorusGeometry(1.15,.06,8,40),0,3.4,-.5);
+add(new THREE.TorusGeometry(1.5,.04,8,40),0,3.4,-.5);
+const disc = new THREE.Mesh(new THREE.CircleGeometry(1.15,40), new THREE.MeshBasicMaterial({color:0xffd060,transparent:true,opacity:.35,side:THREE.DoubleSide}));
+disc.position.set(0,3.4,-.52); st.add(disc);
+
+/* Ngoại cảnh: nền cao, 9 bậc thang ở mỗi cổng, sân, tường rào */
+const STONE = M(0xd8c9aa,{roughness:.9});
+const sb = (w,h,d,x,y,z,m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); o.position.set(x,y,z); scene.add(o); return o; };
+sb(31.5,H-.02,31.5,0,(H-.02)/2,0,STONE); // nền cao dưới chính điện (viền ra ngoài tường 0.25)
+function stairs(dx,dz,hw){ // dx,dz = hướng đi ra ngoài; hw = nửa bề rộng bậc
+  for(let i=1;i<=NSTEP;i++){ const d=(NSTEP-i+1)*RUN, h=i*RISE, c=15.75+d/2; // bậc i cao i*RISE; bậc 9 sát nền
+    sb(dx?d:hw*2,h,dx?hw*2:d,dx*c,h/2,dz*c,STONE); }
+}
+stairs(0,1,5); stairs(-1,0,3); stairs(1,0,3); // trước rộng 5 ô (10 đv); hai bên rộng 3 ô (6 đv)
+const yc = document.createElement("canvas"); yc.width = yc.height = 128;
+const yx = yc.getContext("2d"); yx.fillStyle = "#d9cdb0"; yx.fillRect(0,0,128,128); yx.strokeStyle = "#a89a78"; yx.lineWidth = 3; yx.strokeRect(0,0,128,128);
+const yt = new THREE.CanvasTexture(yc); yt.wrapS = yt.wrapT = THREE.RepeatWrapping; yt.repeat.set(30,33); // ô sân cũng 2 đv = 1 ô cơ sở
+const yard = new THREE.Mesh(new THREE.PlaneGeometry(60,66), new THREE.MeshStandardMaterial({map:yt,roughness:.9}));
+yard.rotation.x = -Math.PI/2; yard.position.set(0,0,4.5); scene.add(yard);
+const FENCE = M(0xf2e6c9,{roughness:.8});
+[[0,36.3,55,.6],[0,-27.3,55,.6],[-27.3,4.5,.6,64],[27.3,4.5,.6,64]].forEach(f => { sb(f[2],1.6,f[3],f[0],.8,f[1],FENCE); sb(f[2]+.1,.2,f[3]+.1,f[0],1.7,f[1],RED); });
+
+/* Địa hình & va chạm (toàn bộ thế giới: sân + 9 bậc + chính điện) */
+const WX = 27, WZN = -27, WZP = 36;                 // biên sân (đơn vị code)
+const STAIRS = [{dx:0,dz:1,hw:5},{dx:-1,dz:0,hw:3},{dx:1,dz:0,hw:3}]; // trước, trái, phải
+const GF = FW/2-.3, GS = SW/2-.3;                   // nửa bề rộng lối đi qua cổng (chừa mép 0.3)
+function stairInfo(s,x,z){ return {d:s.dx*x+s.dz*z-15.75, ac:s.dx ? z : x}; } // d = khoảng cách tính từ mép nền; ac = lệch khỏi trục giữa
+function groundY(x,z){
+  if(Math.abs(x)<15.75 && Math.abs(z)<15.75) return H + ((z<-7.6 && Math.abs(x)<3.5) ? Math.min(.5,.5*(-7.6-z)/1.1) : 0); // nền chính điện + dốc lên đài thờ
+  for(const s of STAIRS){ const q = stairInfo(s,x,z);
+    if(Math.abs(q.ac)<=s.hw && q.d>=0 && q.d<NSTEP*RUN) return (NSTEP-Math.floor(q.d/RUN))*RISE; } // độ cao theo từng bậc
+  return 0;
+}
+function blocked(x,z){ // true = không được đứng ở đây
+  if(x<-WX||x>WX||z<WZN||z>WZP) return true;
+  for(const s of STAIRS){ const q = stairInfo(s,x,z); // lan can hai bên cầu thang: chỉ đi vào từ đầu bậc dưới
+    if(q.d>=0 && q.d<NSTEP*RUN && Math.abs(Math.abs(q.ac)-s.hw)<.25) return true; }
+  if(Math.abs(x)<15.75 && Math.abs(z)<15.75){
+    if(Math.abs(x)<14.3 && Math.abs(z)<14.3){              // bên trong chính điện
+      if(z<-8.4 && Math.abs(x)>=3.5) return true;           // đài cao chỉ lên bằng bậc giữa
+      if(Math.hypot(x,z+12.8)<1.9) return true;             // tượng
+      if(Math.abs(x)<1.9 && z>-10.8 && z<-9.2) return true; // bàn thờ
+      return false;
+    }
+    if(z>14.3 && Math.abs(x)<GF) return false;              // lối qua cổng lớn
+    if(Math.abs(x)>14.3 && Math.abs(z)<GS) return false;    // lối qua cổng nhỏ trái/phải
+    return true;                                            // còn lại là tường
+  }
+  return false;
+}
+function collide(p,pv){ // pv = vị trí trước đó; trượt dọc vật cản
+  if(!blocked(p.x,p.z)) return;
+  if(!blocked(p.x,pv.z)) p.z = pv.z; else if(!blocked(pv.x,p.z)) p.x = pv.x; else { p.x = pv.x; p.z = pv.z; }
+}
+
+/* ---------- Nhân vật chibi ---------- */
+const SKIN = M(0xffdcb8), HAIRM = M(0x2b1a12), DARK = M(0x151010), PINK = M(0xff9a9a);
+function label(text){
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64; const x = c.getContext("2d");
+  x.font = "bold 34px sans-serif"; x.textAlign = "center"; x.lineWidth = 6; x.strokeStyle = "#000"; x.fillStyle = "#fff";
+  x.strokeText(text,128,44); x.fillText(text,128,44);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+  s.scale.set(1.8,.45,1); s.position.y = 1.55; return s;
+}
+/* Khuôn mặt vẽ bằng canvas, dán lên đầu (thay hai chấm mắt và hai quả cầu má hồng). Đây là kỹ thuật chủ dự án đã duyệt, đừng đổi lại thành khối hình.
+   drawFace dùng "tọa độ mặt" riêng: x -0.3..0.3, y 0.72..1.32. headGeo quy đổi đầu của game (bán kính .36, tâm y .72 trong nhóm up) về tọa độ đó.
+   ex = biểu cảm: 0 bình thường, 1 vui, 2 ngạc nhiên, 3 buồn ngủ (game hiện chỉ dùng 0). Đổi biểu cảm: drawFace(ex) rồi FACETEX.needsUpdate = true. */
+const FACECV = document.createElement("canvas"); FACECV.width = FACECV.height = 512; const FACETEX = new THREE.CanvasTexture(FACECV);
+function drawFace(ex){ const g = FACECV.getContext("2d"), W = 512, S = W/.6, X = x => (x+.3)*S, Y = y => (1-(y-.72)/.6)*W;
+ const gr = g.createLinearGradient(0,0,0,W); gr.addColorStop(0,"#ffe2c4"); gr.addColorStop(1,"#fbd2ac"); g.fillStyle = gr; g.fillRect(0,0,W,W);
+ const blob = (x,y,r,c) => { const q = g.createRadialGradient(X(x),Y(y),1,X(x),Y(y),r*S); q.addColorStop(0,c); q.addColorStop(1,"rgba(255,110,110,0)"); g.fillStyle = q; g.fillRect(0,0,W,W); };
+ blob(-.2,.86,.09,"rgba(255,110,110,.5)"); blob(.2,.86,.09,"rgba(255,110,110,.5)"); // má hồng chuyển sắc
+ g.lineCap = "round";
+ [-1,1].forEach(s => { const cx = X(s*.115), cy = Y(.955), rw = .05*S, rh = (ex===2?.07:.06)*S; g.strokeStyle = "#3a2218";
+  if(ex===1){ g.lineWidth = .014*S; g.beginPath(); g.arc(cx,cy+rh*.5,rw*.9,Math.PI*1.1,Math.PI*1.9); g.stroke(); }
+  else { g.save(); g.beginPath(); g.ellipse(cx,cy,rw,rh,0,0,7); g.clip(); g.fillStyle = "#fff"; g.fillRect(cx-rw,cy-rh,rw*2,rh*2); // lòng trắng
+   const ir = g.createRadialGradient(cx,cy+rh*.1,1,cx,cy+rh*.1,rw*.85); ir.addColorStop(0,"#6b3b1e"); ir.addColorStop(.6,"#3a1f10"); ir.addColorStop(1,"#1d0f08");
+   g.fillStyle = ir; g.beginPath(); g.ellipse(cx,cy+rh*.1,rw*.8,rh*.95,0,0,7); g.fill(); // mống mắt + đồng tử
+   g.fillStyle = "#fff"; g.beginPath(); g.arc(cx-rw*.3,cy-rh*.3,rw*.22,0,7); g.fill(); g.beginPath(); g.arc(cx+rw*.3,cy+rh*.4,rw*.1,0,7); g.fill(); // hai điểm sáng
+   if(ex===3){ g.fillStyle = "#f6d2b0"; g.fillRect(cx-rw,cy-rh,rw*2,rh*1.1); }
+   g.restore(); g.lineWidth = .012*S; g.beginPath();
+   if(ex===3){ g.moveTo(cx-rw,cy+rh*.1); g.lineTo(cx+rw,cy+rh*.1); } else g.ellipse(cx,cy,rw,rh,0,Math.PI,Math.PI*2); g.stroke(); } // mi trên
+  const by = Y(1.04)-(ex===2?.018*S:0); g.strokeStyle = "#4a2a1c"; g.lineWidth = .011*S; g.beginPath(); g.moveTo(cx-rw,by+.008*S); g.quadraticCurveTo(cx,by-.01*S,cx+rw,by+.008*S); g.stroke(); }); // lông mày
+ const mx = X(0), my = Y(.835); g.strokeStyle = "#9a4a3a"; g.lineWidth = .009*S; g.fillStyle = "#7a2a26"; g.beginPath(); // miệng
+ if(ex===1){ g.moveTo(mx-.04*S,my); g.quadraticCurveTo(mx,my+.07*S,mx+.04*S,my); g.closePath(); g.fill(); }
+ else if(ex===2){ g.ellipse(mx,my+.01*S,.016*S,.022*S,0,0,7); g.fill(); }
+ else { g.moveTo(mx-.03*S,my); g.quadraticCurveTo(mx,my+(ex===3?0:.025)*S,mx+.03*S,my); g.stroke(); }
+ g.fillStyle = "rgba(190,120,90,.45)"; g.beginPath(); g.ellipse(X(0),Y(.895),.012*S,.008*S,0,0,7); g.fill(); FACETEX.needsUpdate = true; } // mũi nhỏ
+drawFace(0);
+const HEADM = new THREE.MeshStandardMaterial({map:FACETEX,roughness:.7}); // da đầu có mặt (tay, chân vẫn dùng SKIN)
+function headGeo(){ // UV chiếu thẳng từ phía trước; mặt sau và cằm dưới dùng màu da ở góc ảnh
+  const g = new THREE.SphereGeometry(.36,24,18), p = g.attributes.position, uv = g.attributes.uv;
+  for(let i=0;i<p.count;i++){ const x = p.getX(i), y = p.getY(i)+.72, z = p.getZ(i), ok = z>.04 && y>.384 && y<1.104 && Math.abs(x)<.36;
+    uv.setXY(i, ok ? (x+.36)/.72 : 0, ok ? (y-.384)/.72 : 0); }
+  return g; }
+/* ---------- PHỤ KIỆN: TRÀNG HẠT ---------- */
+/* ACCS: danh sách phụ kiện hiện trong menu. Số thứ tự = mã phụ kiện "acc" của makeChar (0 = không đeo). Thêm phụ kiện mới: thêm tên vào đây
+   rồi thêm một dòng "if(acc===N) up.add(...)" trong makeChar. Phụ kiện gắn vào nhóm "up" thì sẽ cúi theo khi nhân vật lạy. */
+const ACCS = ["Không","Tràng hạt"];
+/* Vân gỗ cho hạt: nền nâu đậm, đường vân nâu nhạt lượn sóng + vài đường vân tối + nhiễu mịn. Vẽ bằng canvas, không dùng ảnh ngoài. */
+function woodTex(){
+  const S = 128, c = document.createElement("canvas"); c.width = c.height = S; const g = c.getContext("2d");
+  g.fillStyle = "#3a2113"; g.fillRect(0,0,S,S);
+  let r = 12345; const rnd = () => (r = (r*16807)%2147483647)/2147483647; // số ngẫu nhiên cố định: mọi máy ra cùng một vân
+  for(let i=0;i<26;i++){ const x0 = rnd()*S, w = .5+rnd()*1.6, ph = rnd()*6.28, am = 1+rnd()*4, fr = .02+rnd()*.05;
+    g.strokeStyle = "rgba("+(110+rnd()*40|0)+","+(70+rnd()*30|0)+","+(36+rnd()*20|0)+","+(.3+rnd()*.45)+")"; g.lineWidth = w; g.beginPath();
+    for(let y=0;y<=S;y+=4){ const x = x0+Math.sin(y*fr+ph)*am; y ? g.lineTo(x,y) : g.moveTo(x,y); } g.stroke(); }
+  for(let i=0;i<12;i++){ const x0 = rnd()*S; g.strokeStyle = "rgba(20,10,5,"+(.25+rnd()*.3)+")"; g.lineWidth = .4+rnd()*1.1; g.beginPath();
+    for(let y=0;y<=S;y+=4){ const x = x0+Math.sin(y*.04+i)*3; y ? g.lineTo(x,y) : g.moveTo(x,y); } g.stroke(); }
+  const d = g.getImageData(0,0,S,S); for(let i=0;i<d.data.length;i+=4){ const n = (rnd()-.5)*16; d.data[i]+=n; d.data[i+1]+=n*.8; d.data[i+2]+=n*.6; } g.putImageData(d,0,0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+/* Tính MỘT LẦN rồi dùng chung cho mọi nhân vật (đỡ tốn bộ nhớ và CPU điện thoại).
+   Đường đi: vòng quanh thân, thấp nhất ở giữa NGỰC (t=0, chỗ hạt chủ), cao nhất ở sau CỔ (t=PI). Hai bên hạ xuống vai cao (y>=.34) để tránh cánh tay.
+   Các hạt chia đều theo CHIỀU DÀI CUNG, bước = (độ dài - 2*đoạn đầu)/(số hạt-1), và số hạt tự giảm nếu không đủ chỗ => khoảng hở luôn >= GAP, hạt không đụng nhau.
+   Số hạt luôn lẻ (phong thủy). */
+let MALA = null;
+function malaParts(){
+  if(MALA) return MALA;
+  const BR = .022, GR = BR*1.5, GAP = .012, YT = .38, YB = .08, WANT = 27;
+  const torsoR = y => .24-(y+.01)/.42*.05;                              // bán kính thân tại độ cao y (khớp CylinderGeometry(.19,.24,.42) đặt ở y=.2)
+  const yAt = t => YT-(YT-YB)*Math.pow((1+Math.cos(t))/2,3);
+  const pts = []; for(let i=0;i<96;i++){ const t = i/96*Math.PI*2, y = yAt(t), r = torsoR(y)+BR*.9+.004; pts.push(new THREE.Vector3(r*Math.sin(t), y, r*Math.cos(t))); }
+  const curve = new THREE.CatmullRomCurve3(pts,true), L = curve.getLength();
+  const d1 = GR+BR+GAP;                                                  // từ tâm hạt chủ tới tâm hạt đầu tiên
+  let count = Math.min(WANT, Math.floor((L-2*d1)/(2*BR+GAP))+1); if(count%2===0) count--;
+  const pitch = (L-2*d1)/(count-1);
+  const mats = new Float32Array(count*16), dm = new THREE.Object3D();
+  for(let i=0;i<count;i++){ dm.position.copy(curve.getPointAt((d1+i*pitch)/L)); dm.rotation.set(Math.random()*6.28,Math.random()*6.28,Math.random()*6.28); dm.scale.set(1,.95+Math.random()*.07,1); dm.updateMatrix(); dm.matrix.toArray(mats,i*16); }
+  const guruPos = curve.getPointAt(0), cord = M(0x8a5a2b), tex = woodTex();
+  return MALA = { count, mats, guruPos, GR, cord,
+    beadGeo: new THREE.SphereGeometry(BR,10,8), guruGeo: new THREE.SphereGeometry(GR,12,10),
+    threadGeo: new THREE.TubeGeometry(curve,96,.004,4,true),
+    cordGeo: new THREE.CylinderGeometry(.004,.004,.03,5), skirtGeo: new THREE.CylinderGeometry(.008,.024,.07,10,1,true),
+    wood: new THREE.MeshStandardMaterial({map:tex,roughness:.42,metalness:.05}), skirtMat: M(0x9a6a34,{side:THREE.DoubleSide,roughness:.9}) };
+}
+function makeMala(){
+  const P = malaParts(), g = new THREE.Group(), gp = P.guruPos;
+  const beads = new THREE.InstancedMesh(P.beadGeo, P.wood, P.count); beads.instanceMatrix.array.set(P.mats); beads.instanceMatrix.needsUpdate = true;
+  beads.frustumCulled = false; // InstancedMesh tính vùng nhìn thấy theo gốc nhóm nên tắt cắt xén để hạt không bị biến mất ở mép màn hình
+  g.add(beads, new THREE.Mesh(P.threadGeo, P.cord));
+  const guru = new THREE.Mesh(P.guruGeo, P.wood); guru.position.copy(gp); g.add(guru);                       // hạt chủ
+  const cd = new THREE.Mesh(P.cordGeo, P.cord); cd.position.set(gp.x, gp.y-P.GR-.015, gp.z); g.add(cd);     // dây tua
+  const sk = new THREE.Mesh(P.skirtGeo, P.skirtMat); sk.position.set(gp.x, gp.y-P.GR-.065, gp.z); g.add(sk); // chùm tua
+  return g;
+}
+/* ---------- HÒA THƯỢNG (model GLB) ----------
+   Nhân vật nay là model hòa thượng trong file hoa_thuong.js (GLB mã hóa base64, để cạnh index.html). Model là MỘT KHỐI LIỀN, KHÔNG có xương.
+   Để vẫn có động tác, model được cắt đôi tại độ cao PIV (ngang eo): nửa dưới (gm "low", chân + váy áo) và nửa trên (gm "top", đầu, thân, tay áo).
+   - LẠY/QUỲ: nửa dưới bị ép thấp xuống, nửa trên cúi quanh eo (animChar).  - ĐI BỘ: lắc nhẹ hai bên.  - CHẮP TAY / THẢ LỎNG: chưa khác nhau (model chưa có tay riêng).
+   Hai nửa dùng chung dữ liệu đỉnh, nửa dưới lấn lên BAND một dải nhỏ để khi cúi không hở khe ở eo.
+   Nếu nạp lỗi (thiếu file hoa_thuong.js...), makeChar tự rơi về nhân vật cũ bằng khối hình và hiện cảnh báo. */
+const MONK = {ok:false, loading:true, PIV:.3, BAND:.12, H:1.4}; // H = chiều cao nhân vật trong game (0,7 ô cơ sở)
+let lastAll = null; // lần cập nhật người chơi gần nhất, để dựng lại sau khi nạp xong model
+async function loadMonk(){
+  try {
+    if(!window.HOA_THUONG_B64) throw new Error("thiếu file hoa_thuong.js");
+    const buf = await (await fetch("data:application/octet-stream;base64,"+window.HOA_THUONG_B64)).arrayBuffer();
+    window.HOA_THUONG_B64 = null; // giải phóng bộ nhớ
+    const jl = new DataView(buf).getUint32(12,true), bo = 20+jl+8; // GLB: 12 byte đầu + 8 byte tiêu đề chunk JSON; bo = đầu chunk BIN
+    const J = JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,jl)));
+    const rd = (i,C) => { const a = J.accessors[i], v = J.bufferViews[a.bufferView], o = bo+(v.byteOffset||0)+(a.byteOffset||0);
+      return new C(buf.slice(o, o+a.count*({SCALAR:1,VEC2:2,VEC3:3}[a.type])*C.BYTES_PER_ELEMENT)); };
+    const pr = J.meshes[0].primitives[0], at = pr.attributes;
+    const pos = rd(at.POSITION,Float32Array), uv = rd(at.TEXCOORD_0,Float32Array), nor = rd(at.NORMAL,Float32Array);
+    const idx = rd(pr.indices, J.accessors[pr.indices].componentType === 5125 ? Uint32Array : Uint16Array);
+    let top = 0; for(let i = 1; i < pos.length; i += 3) top = Math.max(top, pos[i]);
+    const sc = MONK.H/top; for(let i = 0; i < pos.length; i++) pos[i] *= sc; // file đã đặt chân ở y=0, giữa ở x=z=0 => chỉ cần phóng to
+    const hi = [], lo = [];
+    for(let t = 0; t < idx.length; t += 3){
+      const cy = (pos[idx[t]*3+1]+pos[idx[t+1]*3+1]+pos[idx[t+2]*3+1])/3;
+      if(cy >= MONK.PIV) hi.push(idx[t],idx[t+1],idx[t+2]);
+      if(cy < MONK.PIV+MONK.BAND) lo.push(idx[t],idx[t+1],idx[t+2]);
+    }
+    const IA = pos.length/3 < 65536 ? Uint16Array : Uint32Array;
+    const A = {position:new THREE.BufferAttribute(pos,3), uv:new THREE.BufferAttribute(uv,2), normal:new THREE.BufferAttribute(nor,3)};
+    const mk = arr => { const g = new THREE.BufferGeometry(); for(const k in A) g.setAttribute(k,A[k]); g.setIndex(new THREE.BufferAttribute(new IA(arr),1)); g.computeBoundingSphere(); return g; };
+    const tx = J.textures[J.materials[0].pbrMetallicRoughness.baseColorTexture.index];
+    const im = J.images[tx.source ?? tx.extensions.EXT_texture_webp.source], bv = J.bufferViews[im.bufferView];
+    const img = new Image(), url = URL.createObjectURL(new Blob([buf.slice(bo+(bv.byteOffset||0), bo+(bv.byteOffset||0)+bv.byteLength)],{type:im.mimeType}));
+    await new Promise((ok,ko) => { img.onload = ok; img.onerror = () => ko(new Error("không đọc được ảnh màu")); img.src = url; });
+    const tex = new THREE.Texture(img); tex.flipY = false; tex.anisotropy = 4; tex.needsUpdate = true; // glTF không lật ảnh
+    MONK.mat = new THREE.MeshStandardMaterial({map:tex, roughness:.8, metalness:0}); // chỉ dùng ảnh màu; bỏ metalness vì game không có ánh sáng môi trường
+    MONK.gTop = mk(hi); MONK.gLow = mk(lo); MONK.ok = true;
+  } catch(e){ status("⚠ Chưa nạp được hòa thượng ("+e.message+"). Tạm dùng nhân vật cũ.", true); }
+  MONK.loading = false;
+  if(lastAll) onPlayers(lastAll);
+}
+function makeMonk(name){
+  const root = new THREE.Group(), body = new THREE.Group(), up = new THREE.Group(); root.add(body); body.add(up); up.position.y = MONK.PIV;
+  const low = new THREE.Mesh(MONK.gLow, MONK.mat); body.add(low);
+  const top = new THREE.Mesh(MONK.gTop, MONK.mat); top.position.y = -MONK.PIV; up.add(top); // nửa trên xoay quanh eo (gốc của nhóm up)
+  const lb = label(name); root.add(lb); scene.add(root);
+  // legs/arms rỗng: để animChar chạy như cũ mà không cần sửa (model không có chân tay riêng)
+  return {g:root,body,up,low,legs:[new THREE.Group(),new THREE.Group()],arms:[new THREE.Group(),new THREE.Group()],lb,state:"idle",t0:performance.now(),cur:{ax:0,az:.12,ux:0,by:0,lx:0},ph:0,sw:0};
+}
+loadMonk();
+function makeChar(color, hair, name, acc){ // acc: mã phụ kiện (0 không, 1 tràng hạt). Máy khác chưa gửi acc nên nhân vật online hiện không đeo.
+  if(MONK.ok) return makeMonk(name); // đã nạp được hòa thượng thì dùng; nếu không, rơi về nhân vật cũ bên dưới
+  const root = new THREE.Group(), body = new THREE.Group(), up = new THREE.Group(); root.add(body); body.add(up); up.position.y = .32;
+  const shirt = M(color), legs = [], arms = [];
+  [1,-1].forEach(s => {
+    const p = new THREE.Group(); p.position.set(s*.12,.32,0);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.3,8), M(0x6b4a2f)); m.position.y = -.15; p.add(m);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(.1,8,6), DARK); f.position.set(0,-.29,.03); f.scale.set(1,.6,1.3); p.add(f);
+    body.add(p); legs.push(p);
+    const a = new THREE.Group(); a.position.set(s*.25,.35,0);
+    const am = new THREE.Mesh(new THREE.CylinderGeometry(.06,.07,.26,8), shirt); am.position.y = -.12; a.add(am);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), SKIN); h.position.y = -.27; a.add(h);
+    up.add(a); arms.push(a);
+  });
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.19,.24,.42,12), shirt); torso.position.y = .2; up.add(torso);
+  const head = new THREE.Mesh(headGeo(), HEADM); head.position.y = .72; up.add(head); // mắt, mày, miệng, má đã nằm trong texture mặt
+  if(acc===1) up.add(makeMala()); // phụ kiện: tràng hạt đeo cổ, nằm trong nhóm up nên cúi theo khi lạy
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(.385,14,10,0,Math.PI*2,0,Math.PI*(hair===1?.56:.52)), HAIRM);
+  cap.position.y = .74; cap.rotation.x = -.3; up.add(cap);
+  if(hair===0){ const bun = new THREE.Mesh(new THREE.SphereGeometry(.15,10,8), HAIRM); bun.position.set(0,1.12,-.05); up.add(bun); }
+  if(hair===2){ const lg = new THREE.Mesh(new THREE.SphereGeometry(.34,12,10), HAIRM); lg.position.set(0,.5,-.16); lg.scale.set(1,1.4,.7); up.add(lg); }
+  const lb = label(name); root.add(lb);
+  scene.add(root);
+  return {g:root,body,up,legs,arms,lb,state:"idle",t0:performance.now(),cur:{ax:0,az:.12,ux:0,by:0,lx:0},ph:0,sw:0};
+}
+const POSE = {
+  idle:{ax:0,az:.12,ux:0,by:0,lx:0},
+  clasp:{ax:-1.15,az:.75,ux:0,by:0,lx:0},
+  kneel:{ax:-.5,az:.1,ux:0,by:-.22,lx:1.45},
+  bow:{ax:-1.1,az:.75,ux:0,by:-.22,lx:1.45}
+};
+function setState(c,s){ if(c.state!==s){ c.state = s; c.t0 = performance.now(); } }
+function animChar(c, dt, walking){
+  const T = POSE[c.state] || POSE.idle, k = 1-Math.exp(-12*dt), u = c.cur;
+  let ux = T.ux; if(c.state==="bow") ux = Math.sin(Math.PI*Math.min(1,(performance.now()-c.t0)/3000))*1.2;
+  u.ax+=(T.ax-u.ax)*k; u.az+=(T.az-u.az)*k; u.by+=(T.by-u.by)*k; u.lx+=(T.lx-u.lx)*k; u.ux+=(ux-u.ux)*k;
+  const w = walking && (c.state==="idle"||c.state==="clasp") ? 1 : 0;
+  c.sw += (w-c.sw)*k; c.ph += dt*10*c.sw;
+  const s = Math.sin(c.ph)*c.sw, as = c.state==="idle" ? s*.6 : 0;
+  c.legs[0].rotation.x = u.lx + s*.7; c.legs[1].rotation.x = u.lx - s*.7;
+  c.arms[0].rotation.x = u.ax + as; c.arms[1].rotation.x = u.ax - as;
+  c.arms[0].rotation.z = -u.az; c.arms[1].rotation.z = u.az;
+  c.up.rotation.x = u.ux; c.body.position.y = u.by + Math.abs(s)*.04;
+  if(c.low){ // hòa thượng (không xương): quỳ/lạy = ép thấp nửa dưới và hạ eo xuống; đi bộ = lắc nhẹ hai bên
+    const kk = Math.min(1,Math.max(0,-u.by/.22)); // 0 đứng, 1 quỳ hết cỡ
+    c.body.position.y = Math.abs(s)*.04;
+    c.low.scale.y = 1-.5*kk; c.up.position.y = MONK.PIV*(1-.5*kk);
+    c.body.rotation.z = Math.sin(c.ph)*.07*c.sw;
+  }
+}
+const lerpAng = (a,b,t) => { const d = ((b-a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; return a+d*t; };
+
+/* ---------- Menu ---------- */
+const COLS = [0xe8b923,0xc0392b,0x2e86c1,0x27ae60,0x8e44ad,0xf5f0e1], HN = ["Búi","Ngắn","Dài"];
+let selCol = 0, selHair = 0;
+/* (v1.0.9) Bỏ chọn màu áo: nhân vật nay là hòa thượng cố định. */
+/* (v1.0.9) Bỏ chọn kiểu tóc. */
+
+let selAcc = 0;
+/* (v1.0.9) Bỏ chọn phụ kiện (hòa thượng đã có chuỗi hạt trong model). */
+
+/* ---------- Firebase ---------- */
+let db, connected = false, joined = false, everConnected = false, meRef = null;
+const myId = Math.random().toString(36).slice(2,10);
+const remotes = new Map();
+let me = null, myName = "", cfgOk = !Object.values(FIREBASE_CONFIG).includes("DIEN_VAO");
+let solo = false; // true = chế độ XEM THỬ ĐỒ HỌA (1 máy, không online, không dùng Firebase)
+async function initFirebase(){
+  if(!cfgOk){ status("⚠ Chưa dán cấu hình Firebase (vẫn bấm được XEM THỬ ĐỒ HỌA)", true); return; }
+  try {
+    status("Đang kết nối máy chủ…");
+    const A = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const D = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+    ({initializeApp} = A); ({getDatabase,ref,set,onValue,onDisconnect,remove} = D);
+    db = getDatabase(initializeApp(FIREBASE_CONFIG));
+    setTimeout(() => { if(!connected && !solo) status("⚠ Không kết nối được. Kiểm tra mạng và databaseURL.", true); }, 10000);
+    onValue(ref(db,".info/connected"), s => {
+      if(solo) return;
+      connected = s.val() === true;
+      if(connected){ everConnected = true; $("play").disabled = joined; status("🟢 Đã kết nối"); if(joined) register(); }
+      else { $("play").disabled = true; if(everConnected) status("🔴 Mất kết nối, đang thử lại…", true); }
+    });
+    onValue(ref(db,`rooms/${ROOM}/players`), snap => { if(!solo) onPlayers(snap.val() || {}); }, err => status("⚠ Lỗi đọc dữ liệu: "+err.message, true));
+  } catch(e){ status("⚠ Không tải được Firebase: "+e.message+" (vẫn bấm được XEM THỬ ĐỒ HỌA)", true); }
+}
+initFirebase();
+async function register(){
+  try { await onDisconnect(meRef).remove(); await sendNow(true); }
+  catch(e){ status("⚠ Lỗi ghi dữ liệu: "+e.message+" (kiểm tra Rules)", true); }
+}
+let lastSig = "", lastSend = 0;
+function payload(){ const p = me.g.position;
+  return {n:myName,c:selCol,h:selHair,x:+p.x.toFixed(2),y:+p.y.toFixed(2),z:+p.z.toFixed(2),r:+me.g.rotation.y.toFixed(2),a:me.state}; }
+async function sendNow(force){
+  if(!joined || !connected) return;
+  const d = payload(), sig = JSON.stringify(d), now = Date.now();
+  if(!force && sig === lastSig && now-lastSend < 2000) return;
+  lastSig = sig; lastSend = now; d.t = now;
+  try { await set(meRef, d); } catch(e){ status("⚠ Lỗi gửi dữ liệu: "+e.message, true); }
+}
+setInterval(() => sendNow(false), 100);
+addEventListener("pagehide", () => { if(meRef) remove(meRef); });
+
+function onPlayers(all){
+  lastAll = all; if(MONK.loading) return; // chờ nạp xong hòa thượng rồi mới dựng người chơi (loadMonk sẽ gọi lại)
+  for(const id of [...remotes.keys()]) if(!(id in all)){ scene.remove(remotes.get(id).g); remotes.delete(id); }
+  const now = performance.now();
+  for(const id in all){
+    if(id === myId) continue;
+    const p = all[id]; let r = remotes.get(id);
+    if(!r){ r = makeChar(COLS[p.c] ?? COLS[0], p.h|0, cleanName(p.n)); r.g.position.set(p.x,p.y,p.z); r.lastT = null; r.seen = now; remotes.set(id,r); }
+    r.tx = p.x; r.ty = p.y; r.tz = p.z; r.tr = p.r; setState(r, p.a || "idle");
+    if(p.t !== r.lastT){ r.lastT = p.t; r.seen = now; }
+    r.name = p.n;
+  }
+}
+const cleanName = n => String(n ?? "?").slice(0,12);
+function updList(){
+  const box = $("plist"); box.textContent = "";
+  if(!joined) return;
+  const live = [...remotes.values()].filter(r => r.g.visible).map(r => cleanName(r.name));
+  [`Trong chùa: ${live.length+1}`, cleanName(myName)+" (bạn)", ...live].forEach(t => {
+    const d = document.createElement("div"); d.textContent = t; box.appendChild(d);
+  });
+}
+setInterval(updList, 1000);
+
+/* ---------- Điều khiển ---------- */
+const keys = {}; addEventListener("keydown", e => keys[e.code] = true); addEventListener("keyup", e => keys[e.code] = false);
+let jx = 0, jy = 0, jid = null;
+const joy = $("joy"), knob = $("knob");
+function joyMove(e){ const r = joy.getBoundingClientRect(); let dx = e.clientX-(r.left+65), dy = e.clientY-(r.top+65); const l = Math.hypot(dx,dy), m = 50;
+  if(l > m){ dx *= m/l; dy *= m/l; } jx = dx/m; jy = dy/m; knob.style.transform = `translate(${dx}px,${dy}px)`; }
+joy.addEventListener("pointerdown", e => { jid = e.pointerId; joy.setPointerCapture(jid); joyMove(e); });
+joy.addEventListener("pointermove", e => { if(e.pointerId === jid) joyMove(e); });
+const joyEnd = e => { if(e.pointerId === jid){ jid = null; jx = jy = 0; knob.style.transform = ""; } };
+joy.addEventListener("pointerup", joyEnd); joy.addEventListener("pointercancel", joyEnd);
+let camYaw = 0, drag = null;
+renderer.domElement.addEventListener("pointerdown", e => { drag = {id:e.pointerId,x:e.clientX}; });
+addEventListener("pointermove", e => { if(drag && e.pointerId === drag.id){ camYaw -= (e.clientX-drag.x)*.006; drag.x = e.clientX; } });
+addEventListener("pointerup", e => { if(drag && e.pointerId === drag.id) drag = null; });
+let bowTimer = 0;
+const act = s => { if(!me) return; if(s==="bow"){ setState(me,"bow"); clearTimeout(bowTimer); bowTimer = setTimeout(() => { if(me.state==="bow") setState(me,"idle"); sendNow(true); }, 3000); }
+  else if(me.state !== "bow"){ setState(me,s); } sendNow(true); };
+$("bBow").onpointerdown = () => act("bow"); $("bKneel").onpointerdown = () => act("kneel");
+$("bClasp").onpointerdown = () => act("clasp"); $("bIdle").onpointerdown = () => act("idle");
+
+function startGame(isSolo){
+  if(MONK.loading){ status("Đang tải nhân vật hòa thượng, đợi giây lát rồi bấm lại…"); return; }
+  if(!isSolo && !connected) return;
+  solo = isSolo;
+  myName = $("nm").value.trim() || ("Khách"+Math.floor(Math.random()*900+100));
+  me = makeChar(COLS[selCol], selHair, myName, selAcc);
+  me.g.position.set((Math.random()-.5)*6, 0, 30); camPos.set(me.g.position.x, 3.2, 35.2); // xuất hiện ở sân trước, phải leo 9 bậc để vào chùa me.g.rotation.y = Math.PI; me.vy = 0;
+  if(!isSolo) meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
+  joined = true; $("menu").style.display = "none"; $("hud").style.display = "block"; $("play").disabled = true;
+  if(isSolo) status("🟡 XEM THỬ ĐỒ HỌA: chỉ mình bạn, không online"); else register();
+}
+$("play").onclick = () => startGame(false);
+$("solo").onclick = () => startGame(true);
+
+/* ---------- Vòng lặp ---------- */
+let last = performance.now(), spd = 4;
+const camPos = new THREE.Vector3(0,5,14);
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = Math.min(.05,(now-last)/1000); last = now;
+  if(joined){
+    let ix = jx, iy = jy;
+    if(keys.KeyA||keys.ArrowLeft) ix -= 1; if(keys.KeyD||keys.ArrowRight) ix += 1;
+    if(keys.KeyW||keys.ArrowUp) iy -= 1; if(keys.KeyS||keys.ArrowDown) iy += 1;
+    const mag = Math.min(1,Math.hypot(ix,iy)); let moving = mag > .15;
+    if(moving && me.state === "bow") moving = false;
+    if(moving){
+      if(me.state === "kneel") setState(me,"idle");
+      const f = -iy, rt = ix, s = Math.sin(camYaw), c = Math.cos(camYaw);
+      const mx = -s*f + c*rt, mz = -c*f - s*rt, l = Math.hypot(mx,mz)||1;
+      const p = me.g.position, pv = {x:p.x,z:p.z}; p.x += mx/l*spd*mag*dt; p.z += mz/l*spd*mag*dt; collide(p,pv);
+      me.g.rotation.y = lerpAng(me.g.rotation.y, Math.atan2(mx,mz), 1-Math.exp(-14*dt));
+    }
+    me.g.position.y += (groundY(me.g.position.x, me.g.position.z) - me.g.position.y)*(1-Math.exp(-20*dt)); // mượt khi lên/xuống bậc
+    animChar(me, dt, moving);
+    const p = me.g.position, d = 5.2;
+    const tgt = new THREE.Vector3(p.x+Math.sin(camYaw)*d, p.y+3.2, p.z+Math.cos(camYaw)*d);
+    camPos.lerp(tgt, 1-Math.exp(-8*dt)); camera.position.copy(camPos);
+    camera.lookAt(p.x, p.y+.9, p.z);
+  } else {
+    const t = now/1000*.15; camera.position.set(Math.sin(t)*9, 4.5, 31+Math.cos(t)*2); camera.lookAt(0,4,12); // nền menu: nhìn từ sân vào cổng chùa
+  }
+  for(const r of remotes.values()){
+    const g = r.g, k = 1-Math.exp(-10*dt), px = g.position.x, pz = g.position.z;
+    g.position.x += (r.tx-g.position.x)*k; g.position.y += (r.ty-g.position.y)*k; g.position.z += (r.tz-g.position.z)*k;
+    g.rotation.y = lerpAng(g.rotation.y, r.tr, k);
+    g.visible = (now - r.seen) < 12000;
+    animChar(r, dt, Math.hypot(g.position.x-px, g.position.z-pz)/Math.max(dt,.001) > .5);
+  }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+</script></body></html>
